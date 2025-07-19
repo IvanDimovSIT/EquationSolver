@@ -1,0 +1,28 @@
+cabal-version:      3.0
+name:               EquationSolver
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             IvanDimovSIT
+maintainer:         ivan390@abv.bg
+-- copyright:
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable EquationSolver
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+        Types,
+        Tokens,
+        Solver
+    -- other-extensions:
+    build-depends:    base ^>=4.18.3.0
+    hs-source-dirs:   app
+    default-language: Haskell2010
