@@ -27,16 +27,8 @@ parseTokensUnvalidated str acc = do
 
 validate :: [Token] -> Either String [Token]
 validate [] = Left "No tokens generated"
-validate tokens 
-    | any isPar tokens = Left "Parenthesis not supported yet"
-    | otherwise = Right tokens
-    where
-        isPar token = case token of
-            TokenOpen -> True
-            TokenClose -> True
-            _ -> False
+validate tokens = Right tokens
 
-    
 parseCharacter :: Char -> (String, [Token]) -> Either String (String, [Token])
 parseCharacter char (str, tokens) = do
         newStr <- parseCharacterForString char str
