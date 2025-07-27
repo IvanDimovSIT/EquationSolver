@@ -23,6 +23,8 @@ executable EquationSolver
         Tokens,
         Solver
     -- other-extensions:
-    build-depends:    base ^>=4.18.3.0
+    build-depends:    
+        base ^>=4.18.3.0,
+        containers ^>= 0.6.7
     hs-source-dirs:   app
     default-language: Haskell2010

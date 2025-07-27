@@ -11,7 +11,7 @@ data Token = TokenPlus
     | TokenVar
     | TokenTerm Term
     | TokenNumber Double
-    deriving(Show)
+    deriving(Show, Eq)
 
 newtype Term = Term (Double, Int)
-    deriving(Show)
+    deriving(Show, Eq)

@@ -1,21 +1,29 @@
 module Solver where
 
 import Types
+import qualified Data.IntMap.Strict as M
+import Data.List (sortBy)
 
-solve :: [Token] -> Either String Double
+solve :: [Token] -> Either String [Double]
 solve [] = Left "Empty input"
 solve tokens = do
-    (left, right) <- splitEquation tokens
-    let (leftTerms, rightTerms) = (toTerms left, toTerms right)
-    leftNorm <- normalise $ Right leftTerms
-    rightNorm <- normalise $ Right rightTerms
+    (left, right) <- splitEquation $ convertToEquation tokens
+    leftNorm <- normalise left
+    rightNorm <- normalise right
+    let terms = sumTerms $ moveTermsToLeft leftNorm rightNorm
+    solveTerms terms
 
-    Left $ show leftNorm
-
+convertToEquation :: [Token] -> [Token]
+convertToEquation tokens
+    | hasEquals || hasVar = tokens
+    | otherwise = TokenVar:TokenEq:tokens
+    where
+        hasEquals = TokenEq `elem` tokens
+        hasVar = TokenVar `elem` tokens
 
 splitEquation :: [Token] -> Either String ([Token], [Token])
 splitEquation tokens
-    | null left || null right = Left "invalid equation"
+    | null left || null right = Left "Invalid equation"
     | otherwise = Right splitEq
     where
         splitEq@(left, right) = (takeWhile isNotEqual tokens, tailOrEmpty $ dropWhile isNotEqual tokens)
@@ -29,8 +37,14 @@ tailOrEmpty [] = []
 tailOrEmpty (_:other) = other
 
 
-normalise :: Either String [Token] -> Either String [Token]
-normalise = validateRemaining.applyMulAndDiv.applyPow.applyParenthesis
+normalise :: [Token] -> Either String [Term]
+normalise = extractTerms
+    .applyMinus
+    .removePlus
+    .applyMulAndDiv
+    .applyPow
+    .applyParenthesis
+    .(Right . toTerms)
 
 
 toTerms :: [Token] -> [Token]
@@ -51,12 +65,12 @@ applyParenthesis (Right (TokenOpen:t1@(TokenTerm _):operation:t2@(TokenTerm _):T
         TokenMinus -> do
             result <- applyParenthesis $ Right rest
             Right $ t1:TokenPow:p:TokenMinus:p:TokenMul:t1:TokenMul:t2:TokenPlus:t2:TokenPow:p:result
-        _ -> Left "unrecognised operation in parenthesis"
-    | otherwise = Left "structure not supported"
-applyParenthesis (Right (t:rest)) = case t of
-    TokenOpen -> Left "unrecognised parenthesis structure"
-    TokenClose -> Left "unrecognised parenthesis structure"
-    _ -> do
+        _ -> Left "Unrecognised operation in parenthesis"
+    | otherwise = Left "Structure not supported"
+applyParenthesis (Right (TokenOpen:TokenMinus:(TokenTerm (Term (coef, pow))):TokenClose:rest)) = do
+        result <- applyParenthesis $ Right rest
+        Right $ TokenTerm (Term (-coef, pow)):result
+applyParenthesis (Right (t:rest)) = do
         result <- applyParenthesis $ Right rest
         Right $ t:result
 
@@ -81,7 +95,7 @@ applyMulAndDiv (Right ((TokenTerm (Term(coef1,pow1))):TokenMul:(TokenTerm (Term(
     let product = TokenTerm (Term (coef1 * coef2, pow1 + pow2))
     applyMulAndDiv $ Right $ product:rest
 applyMulAndDiv (Right ((TokenTerm (Term(coef1,pow1))):TokenDiv:(TokenTerm (Term(coef2,pow2))):rest))
-    | coef2 == 0 = Left "division by zero"
+    | coef2 == 0 = Left "Division by zero"
     | otherwise = do
         let divisionResult = TokenTerm (Term (coef1 / coef2, pow1 - pow2))
         applyMulAndDiv $ Right $ divisionResult:rest
@@ -90,17 +104,66 @@ applyMulAndDiv (Right (t:rest)) = do
     Right $ t:result
 
 
-validateRemaining :: Either String [Token] -> Either String [Token]
-validateRemaining empty@(Right []) = empty
-validateRemaining err@(Left _) = err
-validateRemaining (Right (t:rest))
-    | isValidToken t = do
-        result <- validateRemaining $ Right rest
-        Right $ t:result
-    | otherwise = Left $ "Equation has left over token '" ++ show t ++ "'"
+removePlus :: Either String [Token] -> Either String [Token]
+removePlus = fmap $ filter (/= TokenPlus)
+
+applyMinus :: Either String [Token] -> Either String [Token]
+applyMinus (Right []) = Right []
+applyMinus (Left err) = Left err
+applyMinus (Right (TokenMinus:TokenTerm (Term (coef, pow)):rest)) = do
+    result <- applyMinus $ Right rest
+    Right $ TokenTerm (Term (-coef, pow)):result
+applyMinus (Right (t:rest)) = do
+    result <- applyMinus $ Right rest
+    Right $ t:result
+
+
+extractTerms :: Either String [Token] -> Either String [Term]
+extractTerms eitherTokens = do
+    tokens <- eitherTokens
+    traverse traverseFn $ removeParens tokens
     where
-        isValidToken token = case token of
-            TokenTerm _ -> True
-            TokenPlus -> True
-            TokenMinus -> True
-            _ -> False
+        traverseFn t = case t of
+            TokenTerm term -> Right term
+            t -> Left $ "Not a recognised expression (has term " ++ show t ++ ")"
+
+removeParens :: [Token] -> [Token]
+removeParens = filter (`notElem` [TokenOpen, TokenClose])
+
+moveTermsToLeft :: [Term] -> [Term] -> [Term]
+moveTermsToLeft left right = left ++ map negateTerm right
+    where
+        negateTerm (Term (coef, pow)) = Term (-coef, pow)
+
+
+sumTerms :: [Term] -> [Term]
+sumTerms terms = convertTermMap $ foldr sumFn (M.fromList []) terms
+    where
+        sumFn (Term (coef, pow)) = M.alter (addToMap coef) pow
+        addToMap coef found = case found of
+            Just foundCoef -> Just $ foundCoef + coef
+            Nothing -> Just coef
+
+
+convertTermMap :: M.IntMap Double -> [Term]
+convertTermMap termsMap = toTerms $ sortTerms $ M.toList termsMap
+    where
+        toTerms = map (\(pow, coef) -> Term (coef, pow))
+        sortTerms = sortBy (\(pow1, _) (pow2, _) -> compare pow2 pow1)
+
+solveTerms :: [Term] -> Either String [Double]
+solveTerms [] = Left "Nothing to solve"
+solveTerms [Term(xCoef, 1), Term(coef, 0)] = Right [-coef/xCoef]
+solveTerms [Term(a, 2), Term(b, 1), Term(c, 0)] = Right $ solveQuadratic a b c
+solveTerms _ = Left "Unssupported equation structure"
+
+solveQuadratic :: Double -> Double -> Double -> [Double]
+solveQuadratic a b c
+        | d < 0 || a == 0 = []
+        | d == 0 = [x1]
+        | otherwise = [x1, x2]
+    where
+        d = b * b - 4 * a * c
+        sqrtD = sqrt d
+        x1 = (-b-sqrtD)/(2*a)
+        x2 = (-b+sqrtD)/(2*a)

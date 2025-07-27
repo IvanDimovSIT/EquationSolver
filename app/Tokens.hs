@@ -47,7 +47,7 @@ parseCharacterForToken char str tokens
     | char == '(' = Right $ TokenOpen : addNumberToken
     | char == ')' = Right $ TokenClose : addNumberToken
     | char == 'x' = Right $ TokenVar : addNumberToken
-    | otherwise = Left $ "unrecognised character '" ++ [char] ++ "'"    where
+    | otherwise = Left $ "Unrecognised character '" ++ [char] ++ "'"    where
         addNumberToken = if null str
             then tokens
             else TokenNumber (read str) : tokens
@@ -56,4 +56,4 @@ parseCharacterForString :: Char -> String -> Either String String
 parseCharacterForString char str
     | isDigit char || char == '.' = Right $ char : str
     | char `elem` "+-*/^()=x" = Right ""
-    | otherwise = Left $ "unrecognised character '" ++ [char] ++ "'"
+    | otherwise = Left $ "Unrecognised character '" ++ [char] ++ "'"
