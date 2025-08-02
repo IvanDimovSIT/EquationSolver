@@ -31,21 +31,29 @@ splitEquation tokens
             TokenEq -> False
             _ -> True
 
-
 tailOrEmpty :: [a] -> [a]
 tailOrEmpty [] = []
 tailOrEmpty (_:other) = other
 
-
 normalise :: [Token] -> Either String [Term]
-normalise = extractTerms
-    .applyMinus
-    .removePlus
-    .applyMulAndDiv
-    .applyPow
-    .applyParenthesis
-    .(Right . toTerms)
+normalise terms = do
+    normalisedExpressions <- normaliseExpressions terms
+    let normalisedToTerms = toTerms normalisedExpressions
+    termsWithPowersApplied <- applyPow normalisedToTerms
+    termsWithMulDivApplied <- applyMulAndDiv termsWithPowersApplied
+    termsWithMinusApplied <- applyMinus termsWithMulDivApplied
+    let termsWithPlusApplied = removePlus termsWithMinusApplied
+    extractTerms termsWithPlusApplied
 
+normaliseExpressions :: [Token] -> Either String [Token]
+normaliseExpressions [] = Right []
+normaliseExpressions ((TokenExpression expr):rest) = do
+    normalizedExpr <- normalise expr
+    restNormalized <- normaliseExpressions rest
+    Right $ TokenTermExpression (sumTerms normalizedExpr):restNormalized
+normaliseExpressions (t:rest) = do
+    restNormalized <- normaliseExpressions rest
+    Right $ t:restNormalized
 
 toTerms :: [Token] -> [Token]
 toTerms [] = []
@@ -53,79 +61,94 @@ toTerms ((TokenNumber n):rest) = TokenTerm (Term (n, 0)):toTerms rest
 toTerms (TokenVar:rest) = TokenTerm (Term (1, 1)):toTerms rest
 toTerms (t:rest) = t:toTerms rest
 
-
-applyParenthesis :: Either String [Token] -> Either String [Token]
-applyParenthesis (Right []) = Right []
-applyParenthesis (Left err) = Left err
-applyParenthesis (Right (TokenOpen:t1@(TokenTerm _):operation:t2@(TokenTerm _):TokenClose:TokenPow:p@(TokenTerm (Term(powCoef, pow))):rest))
-    | powCoef == 2 && pow == 0 = case operation of
-        TokenPlus -> do
-            result <- applyParenthesis $ Right rest
-            Right $ t1:TokenPow:p:TokenPlus:p:TokenMul:t1:TokenMul:t2:TokenPlus:t2:TokenPow:p:result
-        TokenMinus -> do
-            result <- applyParenthesis $ Right rest
-            Right $ t1:TokenPow:p:TokenMinus:p:TokenMul:t1:TokenMul:t2:TokenPlus:t2:TokenPow:p:result
-        _ -> Left "Unrecognised operation in parenthesis"
-    | otherwise = Left "Structure not supported"
-applyParenthesis (Right (TokenOpen:TokenMinus:(TokenTerm (Term (coef, pow))):TokenClose:rest)) = do
-        result <- applyParenthesis $ Right rest
-        Right $ TokenTerm (Term (-coef, pow)):result
-applyParenthesis (Right (t:rest)) = do
-        result <- applyParenthesis $ Right rest
-        Right $ t:result
-
-
-applyPow :: Either String [Token] -> Either String [Token]
-applyPow (Right []) = Right []
-applyPow (Left err) = Left err
-applyPow (Right ((TokenTerm (Term(coef1, pow1))):TokenPow:(TokenTerm (Term(coef2, pow2))):rest))
+applyPow :: [Token] -> Either String [Token]
+applyPow [] = Right []
+applyPow ((TokenTerm (Term(coef1, pow1))):TokenPow:(TokenTerm (Term(coef2, pow2))):rest)
     | pow2 == 0 = do
-        result <- applyPow $ Right rest
+        result <- applyPow rest
         Right $ TokenTerm (Term (coef1**coef2,pow1*round coef2)):result
     | otherwise = Left "Power of X not supported"
-applyPow (Right (other:rest)) = do
-    result <- applyPow $ Right rest
+applyPow (TokenPow:TokenTermExpression _:_) = Left "Powers of expressions not supported"
+applyPow ((TokenTermExpression expr):TokenPow:(TokenTerm term):rest) = do
+    exprResult <- applyPowToExpression expr term
+    othersResult <- applyPow rest
+    Right $ TokenTermExpression exprResult:othersResult
+applyPow (other:rest) = do
+    result <- applyPow rest
     Right $ other:result
 
-
-applyMulAndDiv :: Either String [Token] -> Either String [Token]
-applyMulAndDiv (Right []) = Right []
-applyMulAndDiv (Left err) = Left err
-applyMulAndDiv (Right ((TokenTerm (Term(coef1,pow1))):TokenMul:(TokenTerm (Term(coef2,pow2))):rest)) = do
+applyMulAndDiv :: [Token] -> Either String [Token]
+applyMulAndDiv [] = Right []
+applyMulAndDiv ((TokenTerm (Term(coef1,pow1))):TokenMul:(TokenTerm (Term(coef2,pow2))):rest) = do
     let product = TokenTerm (Term (coef1 * coef2, pow1 + pow2))
-    applyMulAndDiv $ Right $ product:rest
-applyMulAndDiv (Right ((TokenTerm (Term(coef1,pow1))):TokenDiv:(TokenTerm (Term(coef2,pow2))):rest))
+    applyMulAndDiv $ product:rest
+applyMulAndDiv ((TokenTerm (Term(coef1,pow1))):TokenDiv:(TokenTerm (Term(coef2,pow2))):rest)
     | coef2 == 0 = Left "Division by zero"
     | otherwise = do
         let divisionResult = TokenTerm (Term (coef1 / coef2, pow1 - pow2))
-        applyMulAndDiv $ Right $ divisionResult:rest
-applyMulAndDiv (Right (t:rest)) = do
-    result <- applyMulAndDiv $ Right rest
+        applyMulAndDiv $ divisionResult:rest
+applyMulAndDiv (TokenTerm term:TokenMul:TokenTermExpression expr:rest) = do
+    let exprResult = applyMulToTerms expr term
+    applyMulAndDiv $ TokenTermExpression exprResult:rest
+applyMulAndDiv ((TokenTermExpression expr):TokenMul:TokenTerm term:rest) = do
+    let exprResult = applyMulToTerms expr term
+    applyMulAndDiv $ TokenTermExpression exprResult:rest
+applyMulAndDiv ((TokenTermExpression expr):TokenDiv:TokenTerm term:rest) = do
+    exprResult <- applyDivToTerms expr term
+    applyMulAndDiv $ TokenTermExpression exprResult:rest
+applyMulAndDiv (t:rest) = do
+    result <- applyMulAndDiv rest
     Right $ t:result
 
+applyMulToTerms :: [Term] -> Term -> [Term]
+applyMulToTerms terms (Term (coef, pow)) = map mapFn terms
+    where
+        mapFn (Term (c, p)) = Term (c * coef, p + pow)
 
-removePlus :: Either String [Token] -> Either String [Token]
-removePlus = fmap $ filter (/= TokenPlus)
+applyDivToTerms :: [Term] -> Term -> Either String [Term]
+applyDivToTerms terms (Term (coef, pow))
+    | coef == 0 = Left "Division by zero"
+    | otherwise = Right $ map mapFn terms
+    where
+        mapFn (Term (c, p)) = Term (c / coef, p - pow)
 
-applyMinus :: Either String [Token] -> Either String [Token]
-applyMinus (Right []) = Right []
-applyMinus (Left err) = Left err
-applyMinus (Right (TokenMinus:TokenTerm (Term (coef, pow)):rest)) = do
-    result <- applyMinus $ Right rest
+applyPowToExpression :: [Term] -> Term -> Either String [Term]
+applyPowToExpression _ (Term(0, _)) = Right [Term (0, 0)]
+applyPowToExpression terms (Term(1, 0)) = Right terms
+applyPowToExpression [Term (coef, pow)] (Term(coef2, 0)) = Right [Term (coef**coef2, pow * round coef2)]
+applyPowToExpression [Term(c1, p1), Term(c2, p2)] (Term(coef, pow))
+    | pow /= 0 = Left "Power of X not supported in expressions"
+    | coef == 2.0 = Right [Term (c1^pow, p1*pow), Term (2 * c1 * c2, p1 + p2), Term (c2^pow, p2*pow)]
+    | otherwise = Left $ "Unsupported expression for power of " ++ show coef
+applyPowToExpression terms pow = Left $ "Unsupported expression for power operation:" ++ show terms ++ "^" ++ show pow
+
+removePlus :: [Token] -> [Token]
+removePlus = filter (/= TokenPlus)
+
+applyMinus :: [Token] -> Either String [Token]
+applyMinus [] = Right []
+applyMinus (TokenMinus:TokenTerm (Term (coef, pow)):rest) = do
+    result <- applyMinus rest
     Right $ TokenTerm (Term (-coef, pow)):result
-applyMinus (Right (t:rest)) = do
-    result <- applyMinus $ Right rest
+applyMinus (TokenMinus:TokenTermExpression terms:rest) = do
+    result <- applyMinus rest
+    Right $ TokenTermExpression (applyMinusToTerms terms):result
+applyMinus (t:rest) = do
+    result <- applyMinus rest
     Right $ t:result
 
+applyMinusToTerms :: [Term] -> [Term]
+applyMinusToTerms = map (\(Term (coef, pow)) -> Term (-coef, pow))
 
-extractTerms :: Either String [Token] -> Either String [Term]
-extractTerms eitherTokens = do
-    tokens <- eitherTokens
-    traverse traverseFn $ removeParens tokens
+extractTerms :: [Token] -> Either String [Term]
+extractTerms tokens = do
+    termGroups <- traverse traverseFn $ removeParens tokens
+    Right $ concat termGroups
     where
         traverseFn t = case t of
-            TokenTerm term -> Right term
-            t -> Left $ "Not a recognised expression (has term " ++ show t ++ ")"
+            TokenTerm term -> Right [term]
+            TokenTermExpression terms -> Right terms
+            _ -> Left $ "Not a recognised expression (has term " ++ show t ++ ")"
 
 removeParens :: [Token] -> [Token]
 removeParens = filter (`notElem` [TokenOpen, TokenClose])
@@ -135,7 +158,6 @@ moveTermsToLeft left right = left ++ map negateTerm right
     where
         negateTerm (Term (coef, pow)) = Term (-coef, pow)
 
-
 sumTerms :: [Term] -> [Term]
 sumTerms terms = convertTermMap $ foldr sumFn (M.fromList []) terms
     where
@@ -143,7 +165,6 @@ sumTerms terms = convertTermMap $ foldr sumFn (M.fromList []) terms
         addToMap coef found = case found of
             Just foundCoef -> Just $ foundCoef + coef
             Nothing -> Just coef
-
 
 convertTermMap :: M.IntMap Double -> [Term]
 convertTermMap termsMap = toTerms $ sortTerms $ M.toList termsMap
@@ -153,9 +174,26 @@ convertTermMap termsMap = toTerms $ sortTerms $ M.toList termsMap
 
 solveTerms :: [Term] -> Either String [Double]
 solveTerms [] = Left "Nothing to solve"
+solveTerms [_] = Right [0.0]
 solveTerms [Term(xCoef, 1), Term(coef, 0)] = Right [-coef/xCoef]
+solveTerms [Term(coef, pow), Term(value, 0)] = solvePowerEquation coef pow value
 solveTerms [Term(a, 2), Term(b, 1), Term(c, 0)] = Right $ solveQuadratic a b c
-solveTerms _ = Left "Unssupported equation structure"
+solveTerms terms = Left $ "Unsupported equation structure:" ++ invalidTerms
+    where
+        invalidTerms = unwords (map show terms)
+
+-- a*x^b + c = 0
+solvePowerEquation :: Double -> Int -> Double -> Either String [Double]
+solvePowerEquation a b c
+    | a == 0 && c == 0 = Left "Infinitely many solutions"
+    | a == 0 = Left "No solutions"
+    | c == 0 = Right [0]
+    | (-c)/a < 0 && even b = Left "No real solutions"
+    | even b = Right [firstSolution, secondSolution]
+    | otherwise = Right [firstSolution]
+    where
+        firstSolution = ((-c)/a)**(1.0/fromIntegral b)
+        secondSolution = -firstSolution
 
 solveQuadratic :: Double -> Double -> Double -> [Double]
 solveQuadratic a b c

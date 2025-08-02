@@ -1,13 +1,14 @@
 module Tokens(parseTokens) where
 import Types
 import Data.Char (isDigit)
-
+import Data.Foldable (Foldable(foldl'))
 
 parseTokens :: String -> Either String [Token]
 parseTokens str = do
     let filteredStr = removeWhitespace str
     tokens <- parseTokensUnvalidated filteredStr ("", [])
-    validate tokens
+    tokensWithExpressions <- createExpressions tokens
+    validate tokensWithExpressions
 
 removeWhitespace :: String -> String
 removeWhitespace = filter (not.(`elem` " \t\n"))
@@ -24,10 +25,13 @@ parseTokensUnvalidated str acc = do
             Left acc -> Left acc
             Right acc -> parseCharacter char acc
 
-
 validate :: [Token] -> Either String [Token]
 validate [] = Left "No tokens generated"
-validate tokens = Right tokens
+validate tokens
+    | hasParens = Left "Mismatched parentheses or invalid expression"
+    | otherwise= Right tokens
+    where
+        hasParens = any (`elem` [TokenOpen, TokenClose]) tokens
 
 parseCharacter :: Char -> (String, [Token]) -> Either String (String, [Token])
 parseCharacter char (str, tokens) = do
@@ -57,3 +61,23 @@ parseCharacterForString char str
     | isDigit char || char == '.' = Right $ char : str
     | char `elem` "+-*/^()=x" = Right ""
     | otherwise = Left $ "Unrecognised character '" ++ [char] ++ "'"
+
+createExpressions :: [Token] -> Either String [Token]
+createExpressions tokens
+    | isInExpression || not (null currentExpression) = Left "Unmatched parentheses in expression"
+    | not $ null err = Left err
+    | otherwise = Right expressions
+    where
+        (expressions, currentExpression, isInExpression, err) = foldl' foldFn startingAcc tokens
+        -- (expressions, current expression, is in expression, error) 
+        startingAcc = ([], [], False, "")
+        foldFn acc@(exp, cur, inExp, err) token
+            | not $ null err = acc
+            | not inExp && token == TokenOpen = (exp, [], True, "") 
+            | not inExp && token == TokenClose = (exp, [], True, "Unmatched closing parenthesis") 
+            | inExp && token == TokenOpen = (exp, [], True, "Nested parentheses are not allowed")
+            | inExp && token == TokenClose = (exp ++ [TokenExpression cur], [], False, "") 
+            | inExp && token == TokenEq = (exp, [], True, "Equal sign inside expression is not allowed") 
+            | inExp = (exp, cur ++ [token], True, "")
+            | otherwise = (exp ++ [token], [], False, "") 
+        

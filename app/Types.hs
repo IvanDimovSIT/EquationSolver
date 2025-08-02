@@ -11,6 +11,8 @@ data Token = TokenPlus
     | TokenVar
     | TokenTerm Term
     | TokenNumber Double
+    | TokenExpression [Token]
+    | TokenTermExpression [Term]
     deriving(Show, Eq)
 
 newtype Term = Term (Double, Int)
