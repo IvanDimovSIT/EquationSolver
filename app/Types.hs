@@ -15,5 +15,4 @@ data Token = TokenPlus
     | TokenTermExpression [Term]
     deriving(Show, Eq)
 
-newtype Term = Term (Double, Int)
-    deriving(Show, Eq)
+type Term = (Double, Int)

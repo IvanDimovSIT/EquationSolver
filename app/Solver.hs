@@ -57,16 +57,16 @@ normaliseExpressions (t:rest) = do
 
 toTerms :: [Token] -> [Token]
 toTerms [] = []
-toTerms ((TokenNumber n):rest) = TokenTerm (Term (n, 0)):toTerms rest
-toTerms (TokenVar:rest) = TokenTerm (Term (1, 1)):toTerms rest
+toTerms ((TokenNumber n):rest) = TokenTerm (n, 0):toTerms rest
+toTerms (TokenVar:rest) = TokenTerm (1, 1):toTerms rest
 toTerms (t:rest) = t:toTerms rest
 
 applyPow :: [Token] -> Either String [Token]
 applyPow [] = Right []
-applyPow ((TokenTerm (Term(coef1, pow1))):TokenPow:(TokenTerm (Term(coef2, pow2))):rest)
+applyPow ((TokenTerm (coef1, pow1)):TokenPow:(TokenTerm (coef2, pow2)):rest)
     | pow2 == 0 = do
         result <- applyPow rest
-        Right $ TokenTerm (Term (coef1**coef2,pow1*round coef2)):result
+        Right $ TokenTerm (coef1**coef2,pow1*round coef2):result
     | otherwise = Left "Power of X not supported"
 applyPow (TokenPow:TokenTermExpression _:_) = Left "Powers of expressions not supported"
 applyPow ((TokenTermExpression expr):TokenPow:(TokenTerm term):rest) = do
@@ -79,13 +79,13 @@ applyPow (other:rest) = do
 
 applyMulAndDiv :: [Token] -> Either String [Token]
 applyMulAndDiv [] = Right []
-applyMulAndDiv ((TokenTerm (Term(coef1,pow1))):TokenMul:(TokenTerm (Term(coef2,pow2))):rest) = do
-    let product = TokenTerm (Term (coef1 * coef2, pow1 + pow2))
+applyMulAndDiv ((TokenTerm (coef1,pow1)):TokenMul:(TokenTerm (coef2,pow2)):rest) = do
+    let product = TokenTerm (coef1 * coef2, pow1 + pow2)
     applyMulAndDiv $ product:rest
-applyMulAndDiv ((TokenTerm (Term(coef1,pow1))):TokenDiv:(TokenTerm (Term(coef2,pow2))):rest)
+applyMulAndDiv ((TokenTerm (coef1,pow1)):TokenDiv:(TokenTerm (coef2,pow2)):rest)
     | coef2 == 0 = Left "Division by zero"
     | otherwise = do
-        let divisionResult = TokenTerm (Term (coef1 / coef2, pow1 - pow2))
+        let divisionResult = TokenTerm (coef1 / coef2, pow1 - pow2)
         applyMulAndDiv $ divisionResult:rest
 applyMulAndDiv (TokenTerm term:TokenMul:TokenTermExpression expr:rest) = do
     let exprResult = applyMulToTerms expr term
@@ -101,24 +101,24 @@ applyMulAndDiv (t:rest) = do
     Right $ t:result
 
 applyMulToTerms :: [Term] -> Term -> [Term]
-applyMulToTerms terms (Term (coef, pow)) = map mapFn terms
+applyMulToTerms terms (coef, pow) = map mapFn terms
     where
-        mapFn (Term (c, p)) = Term (c * coef, p + pow)
+        mapFn (c, p) = (c * coef, p + pow)
 
 applyDivToTerms :: [Term] -> Term -> Either String [Term]
-applyDivToTerms terms (Term (coef, pow))
+applyDivToTerms terms (coef, pow)
     | coef == 0 = Left "Division by zero"
     | otherwise = Right $ map mapFn terms
     where
-        mapFn (Term (c, p)) = Term (c / coef, p - pow)
+        mapFn (c, p) = (c / coef, p - pow)
 
 applyPowToExpression :: [Term] -> Term -> Either String [Term]
-applyPowToExpression _ (Term(0, _)) = Right [Term (0, 0)]
-applyPowToExpression terms (Term(1, 0)) = Right terms
-applyPowToExpression [Term (coef, pow)] (Term(coef2, 0)) = Right [Term (coef**coef2, pow * round coef2)]
-applyPowToExpression [Term(c1, p1), Term(c2, p2)] (Term(coef, pow))
+applyPowToExpression _ (0, _) = Right [(0, 0)]
+applyPowToExpression terms (1, 0) = Right terms
+applyPowToExpression [(coef, pow)] (coef2, 0) = Right [(coef**coef2, pow * round coef2)]
+applyPowToExpression [(c1, p1), (c2, p2)] (coef, pow)
     | pow /= 0 = Left "Power of X not supported in expressions"
-    | coef == 2.0 = Right [Term (c1^pow, p1*pow), Term (2 * c1 * c2, p1 + p2), Term (c2^pow, p2*pow)]
+    | coef == 2.0 = Right [(c1 ** coef, p1 * round coef), (2 * c1 * c2, p1 + p2), (c2 ** coef, p2 * round coef)]
     | otherwise = Left $ "Unsupported expression for power of " ++ show coef
 applyPowToExpression terms pow = Left $ "Unsupported expression for power operation:" ++ show terms ++ "^" ++ show pow
 
@@ -127,9 +127,9 @@ removePlus = filter (/= TokenPlus)
 
 applyMinus :: [Token] -> Either String [Token]
 applyMinus [] = Right []
-applyMinus (TokenMinus:TokenTerm (Term (coef, pow)):rest) = do
+applyMinus (TokenMinus:TokenTerm (coef, pow):rest) = do
     result <- applyMinus rest
-    Right $ TokenTerm (Term (-coef, pow)):result
+    Right $ TokenTerm (-coef, pow):result
 applyMinus (TokenMinus:TokenTermExpression terms:rest) = do
     result <- applyMinus rest
     Right $ TokenTermExpression (applyMinusToTerms terms):result
@@ -138,7 +138,7 @@ applyMinus (t:rest) = do
     Right $ t:result
 
 applyMinusToTerms :: [Term] -> [Term]
-applyMinusToTerms = map (\(Term (coef, pow)) -> Term (-coef, pow))
+applyMinusToTerms = map (\(coef, pow) -> (-coef, pow))
 
 extractTerms :: [Token] -> Either String [Term]
 extractTerms tokens = do
@@ -156,12 +156,12 @@ removeParens = filter (`notElem` [TokenOpen, TokenClose])
 moveTermsToLeft :: [Term] -> [Term] -> [Term]
 moveTermsToLeft left right = left ++ map negateTerm right
     where
-        negateTerm (Term (coef, pow)) = Term (-coef, pow)
+        negateTerm (coef, pow) = (-coef, pow)
 
 sumTerms :: [Term] -> [Term]
 sumTerms terms = convertTermMap $ foldr sumFn (M.fromList []) terms
     where
-        sumFn (Term (coef, pow)) = M.alter (addToMap coef) pow
+        sumFn (coef, pow) = M.alter (addToMap coef) pow
         addToMap coef found = case found of
             Just foundCoef -> Just $ foundCoef + coef
             Nothing -> Just coef
@@ -169,15 +169,15 @@ sumTerms terms = convertTermMap $ foldr sumFn (M.fromList []) terms
 convertTermMap :: M.IntMap Double -> [Term]
 convertTermMap termsMap = toTerms $ sortTerms $ M.toList termsMap
     where
-        toTerms = map (\(pow, coef) -> Term (coef, pow))
+        toTerms = map (\(pow, coef) -> (coef, pow))
         sortTerms = sortBy (\(pow1, _) (pow2, _) -> compare pow2 pow1)
 
 solveTerms :: [Term] -> Either String [Double]
 solveTerms [] = Left "Nothing to solve"
 solveTerms [_] = Right [0.0]
-solveTerms [Term(xCoef, 1), Term(coef, 0)] = Right [-coef/xCoef]
-solveTerms [Term(coef, pow), Term(value, 0)] = solvePowerEquation coef pow value
-solveTerms [Term(a, 2), Term(b, 1), Term(c, 0)] = Right $ solveQuadratic a b c
+solveTerms [(xCoef, 1), (coef, 0)] = Right [-coef/xCoef]
+solveTerms [(coef, pow), (value, 0)] = solvePowerEquation coef pow value
+solveTerms [(a, 2), (b, 1), (c, 0)] = Right $ solveQuadratic a b c
 solveTerms terms = Left $ "Unsupported equation structure:" ++ invalidTerms
     where
         invalidTerms = unwords (map show terms)

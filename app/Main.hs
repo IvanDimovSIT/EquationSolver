@@ -4,12 +4,12 @@ import Solver (solve)
 
 main :: IO ()
 main = do
+    putStrLn "Enter an equation:"
     str <- getLine
     let result = solveEquation str
     case result of
         Left err -> putStrLn $ "Error:" ++ err
         Right solutions -> printSolutions solutions
-    return ()
 
 printSolutions :: [Double] -> IO ()
 printSolutions [] = putStrLn "No solutions in R"
