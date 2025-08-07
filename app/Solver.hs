@@ -197,9 +197,9 @@ solvePowerEquation a b c
 
 solveQuadratic :: Double -> Double -> Double -> [Double]
 solveQuadratic a b c
-        | d < 0 || a == 0 = []
-        | d == 0 = [x1]
-        | otherwise = [x1, x2]
+    | d < 0 || a == 0 = []
+    | d == 0 = [x1]
+    | otherwise = [x1, x2]
     where
         d = b * b - 4 * a * c
         sqrtD = sqrt d

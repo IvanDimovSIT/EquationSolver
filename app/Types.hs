@@ -15,4 +15,5 @@ data Token = TokenPlus
     | TokenTermExpression [Term]
     deriving(Show, Eq)
 
+-- | (Coef, Pow)
 type Term = (Double, Int)
