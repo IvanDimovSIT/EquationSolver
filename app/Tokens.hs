@@ -8,7 +8,7 @@ parseTokens str = do
     let filteredStr = removeWhitespace str
     tokens <- parseTokensUnvalidated filteredStr ("", [])
     tokensWithExpressions <- createExpressions tokens
-    validate tokensWithExpressions
+    validate $ addImplicitMultiplication tokensWithExpressions
 
 removeWhitespace :: String -> String
 removeWhitespace = filter (not.(`elem` " \t\n"))
@@ -81,3 +81,16 @@ createExpressions tokens
             | inExp = (exp, cur ++ [token], True, "")
             | otherwise = (exp ++ [token], [], False, "") 
         
+addImplicitMultiplication :: [Token] -> [Token]
+addImplicitMultiplication [] = []
+addImplicitMultiplication t@[_] = t
+addImplicitMultiplication (first:second:rest)
+    | bothNonOperations = first:TokenMul:othersResult 
+    | otherwise = first:othersResult 
+    where
+        isNonOperation t = case t of
+            TokenNumber _ -> True
+            TokenExpression _ -> True
+            _ -> t == TokenVar
+        bothNonOperations = isNonOperation first && isNonOperation second
+        othersResult = addImplicitMultiplication $ second:rest

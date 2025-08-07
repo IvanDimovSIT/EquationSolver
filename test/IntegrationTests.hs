@@ -8,6 +8,7 @@ integrationTests :: Test
 integrationTests = TestList
   [ "solve simple sum" ~: solveEq "1+2" @?= Right [3.0]
   , "solve complex expression" ~: solveEq "6*12/2+10-1" @?= Right [45.0]
+  , "solve implicit multiplication" ~: solveEq "6x=(-2)x+8" @?= Right [1.0]
   , "solve square" ~: solveEq "x ^ 2 = 36" @?= Right [6.0, -6.0]
   , "solve linear" ~: solveEq "x * (5 - 3) = -8" @?= Right [-4.0]
   , "solve cube" ~: solveEq "x^3=8" @?= Right [2.0]
