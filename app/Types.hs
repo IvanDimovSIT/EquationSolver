@@ -18,3 +18,8 @@ data Token = TokenPlus
 
 -- | (Coef, Pow)
 type Term = (Double, Int)
+
+data SolutionResult = NoRealSolutions
+    | InfiniteSolutions
+    | FiniteSolutions [Double]
+    deriving(Show, Eq)

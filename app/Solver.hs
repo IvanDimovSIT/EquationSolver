@@ -4,7 +4,7 @@ import Types
 import qualified Data.IntMap.Strict as M
 import Data.List (sortBy)
 
-solve :: [Token] -> Either String [Double]
+solve :: [Token] -> Either String SolutionResult
 solve [] = Left "Empty input"
 solve tokens = do
     (left, right) <- splitEquation $ convertToEquation tokens
@@ -173,35 +173,51 @@ convertTermMap termsMap = toTerms $ sortTerms $ M.toList termsMap
         toTerms = map (\(pow, coef) -> (coef, pow))
         sortTerms = sortBy (\(pow1, _) (pow2, _) -> compare pow2 pow1)
 
-solveTerms :: [Term] -> Either String [Double]
+solveTerms :: [Term] -> Either String SolutionResult
 solveTerms [] = Left "Nothing to solve"
-solveTerms [_] = Right [0.0]
-solveTerms [(xCoef, 1), (coef, 0)] = Right [-coef/xCoef]
-solveTerms [(coef, pow), (value, 0)] = solvePowerEquation coef pow value
+solveTerms [(xCoef, 1), (coef, 0)] = Right $ solveSimpleExpression xCoef coef
+solveTerms [(coef, pow), (value, 0)] = Right $ solvePowerEquation coef pow value
 solveTerms [(a, 2), (b, 1), (c, 0)] = Right $ solveQuadratic a b c
+solveTerms [(coef, pow)] = Right $ solveSingleTerm coef pow
 solveTerms terms = Left $ "Unsupported equation structure:" ++ invalidTerms
     where
         invalidTerms = unwords (map show terms)
 
+-- | Solves equation in the form of: ax^b = 0
+solveSingleTerm :: Double -> Int -> SolutionResult
+solveSingleTerm a b
+    | a == 0.0 = InfiniteSolutions
+    | b == 0 = NoRealSolutions
+    | otherwise = FiniteSolutions [0.0]
+
+-- | Solves equation in the form of: ax + b = 0
+solveSimpleExpression :: Double -> Double -> SolutionResult
+solveSimpleExpression a b
+    | a == 0.0 && b == 0.0 = InfiniteSolutions
+    | a == 0.0 = NoRealSolutions
+    | otherwise = FiniteSolutions [divisionResult]
+    where
+        divisionResult = - (b / a)
+
 -- | Solves equation in the form of: ax^b + c = 0
-solvePowerEquation :: Double -> Int -> Double -> Either String [Double]
+solvePowerEquation :: Double -> Int -> Double -> SolutionResult
 solvePowerEquation a b c
-    | a == 0 && c == 0 = Left "Infinitely many solutions"
-    | a == 0 = Left "No solutions"
-    | c == 0 = Right [0]
-    | (-c)/a < 0 && even b = Left "No real solutions"
-    | even b = Right [firstSolution, secondSolution]
-    | otherwise = Right [firstSolution]
+    | a == 0 && c == 0 = InfiniteSolutions
+    | a == 0 = NoRealSolutions
+    | c == 0 = FiniteSolutions [0]
+    | (-c)/a < 0 && even b = NoRealSolutions
+    | even b = FiniteSolutions [firstSolution, secondSolution]
+    | otherwise = FiniteSolutions [firstSolution]
     where
         firstSolution = ((-c)/a)**(1.0/fromIntegral b)
         secondSolution = -firstSolution
 
 -- | Solves equation in the form of: ax^2 + bx + c = 0
-solveQuadratic :: Double -> Double -> Double -> [Double]
+solveQuadratic :: Double -> Double -> Double -> SolutionResult
 solveQuadratic a b c
-    | d < 0 || a == 0 = []
-    | d == 0 = [x1]
-    | otherwise = [x1, x2]
+    | d < 0 || a == 0 = NoRealSolutions
+    | d == 0 = FiniteSolutions [x1]
+    | otherwise = FiniteSolutions [x1, x2]
     where
         d = b * b - 4 * a * c
         sqrtD = sqrt d

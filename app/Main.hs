@@ -1,6 +1,7 @@
 module Main where
 import Tokens (parseTokens)
 import Solver (solve)
+import Types
 
 main :: IO ()
 main = do
@@ -11,11 +12,12 @@ main = do
         Left err -> putStrLn $ "Error:" ++ err
         Right solutions -> printSolutions solutions
 
-solveEquation :: String -> Either String [Double]
-solveEquation str =  parseTokens str >>= solve
+solveEquation :: String -> Either String SolutionResult
+solveEquation str = parseTokens str >>= solve
 
-printSolutions :: [Double] -> IO ()
-printSolutions [] = putStrLn "No solutions in R"
-printSolutions [x] = putStrLn $ "x=" ++ show x
-printSolutions [x1, x2] = putStrLn $ "x1=" ++ show x1 ++ ", x2=" ++ show x2
-printSolutions solutions = print solutions
+printSolutions :: SolutionResult -> IO ()
+printSolutions NoRealSolutions = putStrLn "No solutions in R"
+printSolutions (FiniteSolutions [x]) = putStrLn $ "x=" ++ show x
+printSolutions (FiniteSolutions [x1, x2]) = putStrLn $ "x1=" ++ show x1 ++ ", x2=" ++ show x2
+printSolutions (FiniteSolutions solutions) = print solutions
+printSolutions InfiniteSolutions = putStrLn "Infinitely many solutions"
