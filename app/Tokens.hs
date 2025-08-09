@@ -1,7 +1,7 @@
 module Tokens(parseTokens) where
 import Types
 import Data.Char (isDigit)
-import Data.Foldable (Foldable(foldl'))
+import Data.Foldable (Foldable(foldr'))
 
 parseTokens :: String -> Either String [Token]
 parseTokens str = do
@@ -64,33 +64,46 @@ parseCharacterForString char str
 
 createExpressions :: [Token] -> Either String [Token]
 createExpressions tokens
-    | isInExpression || not (null currentExpression) = Left "Unmatched parentheses in expression"
     | not $ null err = Left err
-    | otherwise = Right expressions
+    | closeCount /= 0 || not (null currentExpression) = Left "Unmatched parentheses in expression"
+    | otherwise = createSubExpressions expressions
     where
-        (expressions, currentExpression, isInExpression, err) = foldl' foldFn startingAcc tokens
-        -- (expressions, current expression, is in expression, error) 
-        startingAcc = ([], [], False, "")
-        foldFn acc@(exp, cur, inExp, err) token
+        (expressions, currentExpression, closeCount, err) = foldr' foldFn startingAcc tokens
+        -- (expressions, current expression, close count, error) 
+        startingAcc = ([], [], 0, "")
+        foldFn token acc@(exp, cur, close, err)
             | not $ null err = acc
-            | not inExp && token == TokenOpen = (exp, [], True, "") 
-            | not inExp && token == TokenClose = (exp, [], True, "Unmatched closing parenthesis") 
-            | inExp && token == TokenOpen = (exp, [], True, "Nested parentheses are not allowed")
-            | inExp && token == TokenClose = (exp ++ [TokenExpression cur], [], False, "") 
-            | inExp && token == TokenEq = (exp, [], True, "Equal sign inside expression is not allowed") 
-            | inExp = (exp, cur ++ [token], True, "")
-            | otherwise = (exp ++ [token], [], False, "") 
-        
-addImplicitMultiplication :: [Token] -> [Token]
-addImplicitMultiplication [] = []
-addImplicitMultiplication t@[_] = t
-addImplicitMultiplication (first:second:rest)
-    | bothNonOperations = first:TokenMul:othersResult 
-    | otherwise = first:othersResult 
+            | close == 0 && token == TokenClose = (exp, [], close+1, "")
+            | close == 0 && token == TokenOpen = (exp, [], 0, "Unmatched closing parenthesis")
+            | close > 0 && token == TokenClose = (exp, token : cur, close+1, "")
+            | close == 1 && token == TokenOpen = (TokenExpression cur : exp, [], close-1, "")
+            | close > 1 && token == TokenOpen = (exp, token : cur, close-1, "")
+            | close > 0 && token == TokenEq = (exp, [], close, "Equal sign inside expression is not allowed")
+            | close > 0 = (exp, token : cur, close, "")
+            | otherwise = (token : exp, [], 0, "")
+
+createSubExpressions :: [Token] -> Either String [Token]
+createSubExpressions = mapM mapFn
     where
-        isNonOperation t = case t of
-            TokenNumber _ -> True
-            TokenExpression _ -> True
-            _ -> t == TokenVar
-        bothNonOperations = isNonOperation first && isNonOperation second
-        othersResult = addImplicitMultiplication $ second:rest
+        mapFn (TokenExpression ex) = TokenExpression <$> createExpressions ex
+        mapFn token = Right token
+
+
+addImplicitMultiplication :: [Token] -> [Token]
+addImplicitMultiplication tokens = map addToSubExpressionsMapFn $ go tokens
+    where
+        addToSubExpressionsMapFn (TokenExpression ex) = TokenExpression 
+            $ addImplicitMultiplication ex
+        addToSubExpressionsMapFn t = t
+        go [] = []
+        go t@[_] = t
+        go (first:second:rest)
+            | bothNonOperations = first:TokenMul:othersResult
+            | otherwise = first:othersResult
+            where
+                isNonOperation t = case t of
+                    TokenNumber _ -> True
+                    TokenExpression _ -> True
+                    _ -> t == TokenVar
+                bothNonOperations = isNonOperation first && isNonOperation second
+                othersResult = addImplicitMultiplication $ second:rest

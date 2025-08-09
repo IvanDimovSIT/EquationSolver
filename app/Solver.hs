@@ -59,6 +59,7 @@ toTerms :: [Token] -> [Token]
 toTerms [] = []
 toTerms ((TokenNumber n):rest) = TokenTerm (n, 0):toTerms rest
 toTerms (TokenVar:rest) = TokenTerm (1, 1):toTerms rest
+toTerms (TokenTermExpression [term]:rest) = TokenTerm term:toTerms rest
 toTerms (t:rest) = t:toTerms rest
 
 applyPow :: [Token] -> Either String [Token]
@@ -148,7 +149,7 @@ extractTerms tokens = do
         traverseFn t = case t of
             TokenTerm term -> Right [term]
             TokenTermExpression terms -> Right terms
-            _ -> Left $ "Not a recognised expression (has term " ++ show t ++ ")"
+            _ -> Left $ "Not a recognised expression (has " ++ show t ++ ")"
 
 removeParens :: [Token] -> [Token]
 removeParens = filter (`notElem` [TokenOpen, TokenClose])
@@ -182,7 +183,7 @@ solveTerms terms = Left $ "Unsupported equation structure:" ++ invalidTerms
     where
         invalidTerms = unwords (map show terms)
 
--- a*x^b + c = 0
+-- | Solves equation in the form of: ax^b + c = 0
 solvePowerEquation :: Double -> Int -> Double -> Either String [Double]
 solvePowerEquation a b c
     | a == 0 && c == 0 = Left "Infinitely many solutions"
@@ -195,6 +196,7 @@ solvePowerEquation a b c
         firstSolution = ((-c)/a)**(1.0/fromIntegral b)
         secondSolution = -firstSolution
 
+-- | Solves equation in the form of: ax^2 + bx + c = 0
 solveQuadratic :: Double -> Double -> Double -> [Double]
 solveQuadratic a b c
     | d < 0 || a == 0 = []

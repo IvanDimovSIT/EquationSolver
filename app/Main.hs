@@ -11,13 +11,11 @@ main = do
         Left err -> putStrLn $ "Error:" ++ err
         Right solutions -> printSolutions solutions
 
+solveEquation :: String -> Either String [Double]
+solveEquation str =  parseTokens str >>= solve
+
 printSolutions :: [Double] -> IO ()
 printSolutions [] = putStrLn "No solutions in R"
 printSolutions [x] = putStrLn $ "x=" ++ show x
 printSolutions [x1, x2] = putStrLn $ "x1=" ++ show x1 ++ ", x2=" ++ show x2
 printSolutions solutions = print solutions
-
-solveEquation :: String -> Either String [Double]
-solveEquation str = do
-    tokens <- parseTokens str
-    solve tokens

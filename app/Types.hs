@@ -12,6 +12,7 @@ data Token = TokenPlus
     | TokenTerm Term
     | TokenNumber Double
     | TokenExpression [Token]
+    -- | Normalised expression
     | TokenTermExpression [Term]
     deriving(Show, Eq)
 
